@@ -7,8 +7,7 @@ import re
 from pathlib import Path
 import plotly.express as px
 from collections import Counter
-import sys
-import subprocess
+
 
 # =========================
 # PATHS (CLOUD SAFE)
@@ -1284,7 +1283,7 @@ elif st.session_state.page == "Tricky Reviews":
     view = df.copy()
 
     if focus == "Needs manual review (uncertain)":
-        view = view[view["_uncertain"] == True]
+        view = view[view["_uncertain"]]
     elif focus == "Mixed sentiment cases":
         view = view[view["_reasons"].apply(lambda xs: "Mixed feelings" in xs)]
     elif focus == "Negation cases":
@@ -1299,7 +1298,7 @@ elif st.session_state.page == "Tricky Reviews":
 
     tmp = df.copy()
     if focus == "Needs manual review (uncertain)":
-        tmp = tmp[tmp["_uncertain"] == True]
+        tmp = tmp[tmp["_uncertain"]]
     elif focus == "Mixed sentiment cases":
         tmp = tmp[tmp["_reasons"].apply(lambda xs: "Mixed feelings" in xs)]
     elif focus == "Negation cases":

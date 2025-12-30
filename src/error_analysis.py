@@ -1,5 +1,5 @@
 import pandas as pd
-import numpy as np
+
 
 def misclassified_report(X_test_raw, X_test_clean, y_test, y_pred, y_proba):
     df_err = pd.DataFrame({
