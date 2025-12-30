@@ -1,5 +1,12 @@
 # ReviewSense AI 🧠📊
 
+[![CI](https://github.com/Gujjar-Pranav/review-sense-ai/actions/workflows/ci.yml/badge.svg)](https://github.com/Gujjar-Pranav/review-sense-ai/actions/workflows/ci.yml)
+
+🔗 **Live App:** https://reviewsense-ai.streamlit.app  
+*(If sleeping, open once to wake it up)*
+
+---
+
 **ReviewSense AI** is a trust-aware review intelligence dashboard that transforms raw customer reviews into **clear insights, risks, and actions**.  
 It combines machine learning, confidence scoring, and explainable analytics to help teams understand *what customers feel*, *where the model is uncertain*, and *what needs human attention*.
 
@@ -52,9 +59,9 @@ Detects reviews that are hard for AI to judge, including:
 
 ## 🧠 Machine Learning Pipeline
 
-- Text preprocessing & feature extraction
-- Sentiment modeling with probability calibration
-- Confidence score derived from prediction uncertainty
+- Text preprocessing & TF-IDF feature extraction
+- Calibrated sentiment modeling
+- Probability-based confidence scoring
 - Error analysis and misclassification reports
 - Model comparison utilities
 
@@ -91,11 +98,22 @@ review-sense-ai/
 │   ├── config.py
 │   └── utils.py
 │
-├── data/                   # Sample dataset
+├── artifacts/              # Trained model (committed)
+│   └── best_model_calibrated.joblib
+│
+├── outputs/reports/        # Evaluation artifacts
+│   ├── misclassified.csv
+│   ├── model_comparison.csv
+│   └── calibrated_metrics.json
+│
+├── data/
 │   └── amazonreviews.tsv
 │
-├── main.py                 # Entry point for pipeline
+├── .github/workflows/ci.yml
+├── .streamlit/config.toml
+├── main.py
 ├── requirements.txt
+├── runtime.txt
 └── README.md
 
 ▶️ How to Run Locally
@@ -105,13 +123,16 @@ cd review-sense-ai
 
 2️⃣ Create & activate virtual environment
 python -m venv .venv
-source .venv/bin/activate  # macOS / Linux
-# .venv\Scripts\activate   # Windows
+source .venv/bin/activate   # macOS / Linux
+# .venv\Scripts\activate    # Windows
 
 3️⃣ Install dependencies
 pip install -r requirements.txt
 
-4️⃣ Run the Streamlit app
+4️⃣ (Optional) Regenerate model & reports
+python main.py
+
+5️⃣ Run the Streamlit app
 streamlit run app/streamlit_app.py
 
 📈 Example Use Cases
@@ -122,7 +143,7 @@ Analysts auditing ML confidence and failure modes
 
 Businesses deciding when AI decisions need human review
 
-Portfolio demonstration of responsible AI design
+Portfolio demonstration of Responsible AI design
 
 🔒 Responsible AI Focus
 
@@ -130,21 +151,39 @@ ReviewSense AI explicitly highlights:
 
 Where the model is uncertain
 
-Why human review is needed
+Why human review is required
 
 How to safely operationalize ML predictions
 
-This makes it suitable for real-world, high-stakes use cases.
+This makes it suitable for real-world, high-stakes ML use cases.
+
+🧪 CI/CD & Quality Gates
+
+This repository includes production-grade CI/CD:
+
+✅ GitHub Actions CI
+
+✅ Ruff linting (PEP8 + modern Python)
+
+✅ Python compile checks
+
+✅ Artifact presence validation
+
+✅ Fail-fast safety checks
+
+All commits to main must pass CI before merging.
 
 📌 Future Improvements
 
-Live deployment (Streamlit Cloud)
+Model monitoring over time
 
 Topic modeling for complaints
 
 Multi-language support
 
-Model monitoring over time
+A/B evaluation dashboard
+
+Drift & confidence alerts
 
 👤 Author
 
