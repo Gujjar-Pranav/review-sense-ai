@@ -60,6 +60,23 @@ st.markdown(
         margin-right: 6px;
         margin-bottom: 6px;
       }
+      .hl{
+        display:inline-block;
+        padding: 1px 6px;         /* smaller padding */
+        border-radius: 8px;
+        line-height: 1.4;
+        margin: 0 1px;
+        font-weight: 600;
+        color: #ffffff !important; /* readable in dark theme */
+        border: 1px solid rgba(255,255,255,0.18);
+      }
+      .hl-pos{
+        background: rgba(34,197,94,0.55);  /* green, not too bright */
+      }
+      .hl-neg{
+        background: rgba(239,68,68,0.55);  /* red, not too bright */
+      }
+    
     </style>
     """,
     unsafe_allow_html=True
