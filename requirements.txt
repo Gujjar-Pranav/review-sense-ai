@@ -1,0 +1,11 @@
+pandas
+numpy
+scikit-learn
+joblib
+nltk
+matplotlib
+seaborn
+wordcloud
+sentence-transformers
+streamlit
+openpyxl
