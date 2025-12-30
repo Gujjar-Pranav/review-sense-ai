@@ -268,15 +268,15 @@ def explain_review_terms(calibrated_model, text: str, top_k_each=6):
 
     return pos_terms, neg_terms
 
-def highlight_terms_both(text: str, pos_terms, neg_terms,
-                         pos_color="#C8E6C9", neg_color="#FFCDD2"):
+def highlight_terms_both(text: str, pos_terms, neg_terms):
     """
-    Highlights multiple terms/phrases across the entire review.
-    Negative first to protect phrases like "not good" (should stay red).
+    Highlights terms using CSS classes (.hl-pos / .hl-neg).
+    Negative first so phrases like 'not good' stay red.
     """
     if not text:
-        return text
+        return ""
 
+    # Escape HTML
     safe = (
         text.replace("&", "&amp;")
             .replace("<", "&lt;")
@@ -286,16 +286,17 @@ def highlight_terms_both(text: str, pos_terms, neg_terms,
     pos_terms = sorted(set(pos_terms), key=len, reverse=True)
     neg_terms = sorted(set(neg_terms), key=len, reverse=True)
 
-    def repl(span_text, color):
-        return f"<span style='background-color:{color}; padding:3px 4px; border-radius:6px;'>{span_text}</span>"
+    def repl(span_text, cls):
+        return f'<span class="hl {cls}">{span_text}</span>'
 
+    # Negative first
     for term in neg_terms:
         pattern = re.compile(rf"(?i)(?<!\w){re.escape(term)}(?!\w)")
-        safe = pattern.sub(lambda m: repl(m.group(0), neg_color), safe)
+        safe = pattern.sub(lambda m: repl(m.group(0), "hl-neg"), safe)
 
     for term in pos_terms:
         pattern = re.compile(rf"(?i)(?<!\w){re.escape(term)}(?!\w)")
-        safe = pattern.sub(lambda m: repl(m.group(0), pos_color), safe)
+        safe = pattern.sub(lambda m: repl(m.group(0), "hl-pos"), safe)
 
     return safe
 
