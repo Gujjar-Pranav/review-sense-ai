@@ -8,24 +8,6 @@ import plotly.express as px
 from collections import Counter
 import sys
 import subprocess
-from src.config import MODEL_PATH, PROJECT_ROOT
-
-# --------------------------------------------------
-# Ensure model exists (Streamlit Cloud safe)
-# --------------------------------------------------
-if not MODEL_PATH.exists():
-    with st.spinner("Model not found. Training model (first run only)..."):
-        subprocess.run(
-            [sys.executable, str(PROJECT_ROOT / "main.py")],
-            check=True
-        )
-    st.success("Model trained successfully!")
-
-# --------------------------------------------------
-# Now import anything that depends on the model
-# --------------------------------------------------
-import joblib
-model = joblib.load(MODEL_PATH)
 
 # =========================
 # PATHS (CLOUD SAFE)
