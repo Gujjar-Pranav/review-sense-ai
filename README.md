@@ -1,152 +1,180 @@
-# ReviewSense AI 🧠📊
+# 💬 ReviewSense AI  
+[![CI](https://github.com/Gujjar-Pranav/review-sense-ai/actions/workflows/ci.yml/badge.svg)](https://github.com/Gujjar-Pranav/review-sense-ai/actions/workflows/ci.yml)
 
-**ReviewSense AI** is a trust-aware review intelligence dashboard that transforms raw customer reviews into **clear insights, risks, and actions**.  
-It combines machine learning, confidence scoring, and explainable analytics to help teams understand *what customers feel*, *where the model is uncertain*, and *what needs human attention*.
-
----
-
-## 🚀 What This Project Does
-
-ReviewSense AI analyzes customer reviews (Amazon-style) and provides:
-
-- Sentiment classification (Positive / Negative / Mixed)
-- Confidence & risk scoring for each prediction
-- Identification of **tricky reviews** where AI struggles
-- Executive-level insights for decision-makers
-- A polished, interactive **Streamlit dashboard**
-
-This project is designed to be both **ML-practical** and **business-ready**.
+**A customer-ready AI dashboard that transforms product reviews into clear insights, risks, and actions.**
 
 ---
 
-## 🧩 Key Features
+## 🚀 Overview
 
-### 🛡️ Trust & Confidence Dashboard
-- Negative risk percentage
-- Low-confidence review detection
-- Auto-approve vs manual-review zones
-- Clear operational recommendations
+**ReviewSense AI** is an end-to-end **review intelligence platform** that analyzes customer feedback using machine learning and presents:
 
-### 🧪 Tricky Reviews (AI Limitations)
-Detects reviews that are hard for AI to judge, including:
-- Mixed sentiment
-- Negation (e.g. *"not bad"*)
-- Confusing or vague wording
-- Strong tone / emphasis (caps, punctuation)
-- Uncertain or borderline predictions
+- Sentiment insights (Positive / Negative / Uncertain)
+- Model confidence & calibration
+- Misclassification analysis
+- Executive-friendly dashboards
+- Explainable AI outputs (simple + technical modes)
 
-### 📊 Business Insights (Executive View)
-- Overall sentiment distribution
-- Focus index (where to fix first)
-- Top praise themes
-- Example high-confidence praise & complaints
-- Shareable plain-English summary
-
-### 🔍 Drilldowns & Transparency
-- Filter by confidence threshold
-- Category-based analysis
-- Download-ready results table
-- Clear explanation of why reviews need human review
+Built with **production discipline**: CI/CD, linting, artifact validation, and Streamlit Cloud deployment.
 
 ---
 
-## 🧠 Machine Learning Pipeline
+## 🧠 Key Features
 
-- Text preprocessing & feature extraction
-- Sentiment modeling with probability calibration
-- Confidence score derived from prediction uncertainty
-- Error analysis and misclassification reports
-- Model comparison utilities
-
----
-
-## 🛠️ Tech Stack
-
-- **Python 3.12**
-- **Streamlit** – interactive dashboard
-- **scikit-learn** – ML models & calibration
-- **pandas / numpy** – data processing
-- **Plotly** – rich visualizations
-- **Joblib** – model persistence
+- ✅ Calibrated sentiment classifier (high/low confidence)
+- 📊 Model comparison (TF-IDF vs BERT)
+- 🔍 Misclassified review analysis
+- 🧾 Explainable highlights (positive / negative phrases)
+- 🎛 Simple vs Technical explanation mode
+- 🌙 Premium dark theme (executive-ready UI)
+- ☁️ Streamlit Cloud compatible (no training at runtime)
+- 🛡 Hardened CI/CD with Ruff linting
 
 ---
 
-## 📂 Project Structure
+## 🏗 Project Structure
 
-```text
 review-sense-ai/
-│
-├── app/                    # Streamlit UI
-│   ├── streamlit_app.py
-│   ├── ui_helpers.py
-│   └── visualizations.py
-│
-├── src/                    # ML & analysis pipeline
-│   ├── preprocess.py
-│   ├── calibrate_train.py
-│   ├── modeling_compare.py
-│   ├── error_analysis.py
-│   ├── eda.py
-│   ├── data_load.py
-│   ├── config.py
-│   └── utils.py
-│
-├── data/                   # Sample dataset
-│   └── amazonreviews.tsv
-│
-├── main.py                 # Entry point for pipeline
+├── app/
+│ ├── streamlit_app.py # Streamlit dashboard
+│ ├── ui_helpers.py
+│ └── visualizations.py
+├── src/
+│ ├── config.py # Central paths & constants
+│ ├── data_load.py
+│ ├── preprocess.py
+│ ├── modeling_compare.py
+│ ├── calibrate_train.py
+│ ├── error_analysis.py
+│ └── utils.py
+├── artifacts/
+│ └── best_model_calibrated.joblib
+├── data/
+│ └── amazonreviews.tsv
+├── outputs/
+│ └── reports/
+│ ├── model_comparison.csv
+│ ├── misclassified.csv
+│ ├── calibrated_metrics.json
+│ └── misclassified_summary.json
+├── .github/workflows/ci.yml
+├── .streamlit/config.toml
 ├── requirements.txt
+├── runtime.txt
 └── README.md
 
-▶️ How to Run Locally
-1️⃣ Clone the repository
-git clone https://github.com/Gujjar-Pranav/review-sense-ai.git
-cd review-sense-ai
+markdown
+Copy code
 
-2️⃣ Create & activate virtual environment
-python -m venv .venv
-source .venv/bin/activate  # macOS / Linux
-# .venv\Scripts\activate   # Windows
+---
 
-3️⃣ Install dependencies
+## 🧪 Machine Learning Pipeline
+
+1. **Data ingestion** (Amazon-style reviews)
+2. **Text preprocessing**
+3. **Model comparison**
+   - TF-IDF + Linear models
+   - BERT embeddings
+4. **Final model selection**
+5. **Probability calibration**
+6. **Error analysis & reports**
+7. **Artifact persistence**
+
+> ⚠️ Training is done **locally only**.  
+> Streamlit Cloud runs in **inference-only mode** for stability.
+
+---
+
+## ▶️ Run Locally
+
+### 1️⃣ Install dependencies
+```bash
 pip install -r requirements.txt
+2️⃣ Train model & generate reports
+bash
+Copy code
+python main.py
+This generates:
 
-4️⃣ Run the Streamlit app
+artifacts/best_model_calibrated.joblib
+
+outputs/reports/*.csv
+
+3️⃣ Launch dashboard
+bash
+Copy code
 streamlit run app/streamlit_app.py
+☁️ Streamlit Cloud Deployment
+App runs without training
 
-📈 Example Use Cases
+Requires:
 
-Product teams prioritizing customer pain points
+artifacts/best_model_calibrated.joblib
 
-Analysts auditing ML confidence and failure modes
+outputs/reports/ (recommended)
 
-Businesses deciding when AI decisions need human review
+Missing files show guided UI warnings, not crashes
 
-Portfolio demonstration of responsible AI design
+🛡 CI / CD
+Automated GitHub Actions pipeline:
 
-🔒 Responsible AI Focus
+Ruff lint (PEP8 + best practices)
 
-ReviewSense AI explicitly highlights:
+Python compilation check
 
-Where the model is uncertain
+Artifact validation
 
-Why human review is needed
+Optional tests (if present)
 
-How to safely operationalize ML predictions
+CI fails on:
 
-This makes it suitable for real-world, high-stakes use cases.
+Unused imports
 
-📌 Future Improvements
+Bad boolean comparisons
 
-Live deployment (Streamlit Cloud)
+Missing required artifacts
 
-Topic modeling for complaints
+🎨 UI & Theming
+Executive dark theme
 
-Multi-language support
+High-contrast highlights
 
-Model monitoring over time
+Clean chip-based explanations
+
+Accessible color palette
+
+Wide-screen optimized layout
+
+Theme controlled via:
+
+arduino
+Copy code
+.streamlit/config.toml
+📌 Why This Project Matters
+This is not a demo.
+
+It demonstrates:
+
+Real ML lifecycle
+
+Explainable AI
+
+Production hygiene
+
+CI/CD discipline
+
+Cloud deployment constraints
+
+Executive-grade UX
+
+Perfect for:
+
+ML Engineer portfolios
+
+Data Science interviews
+
+Product-AI showcases
 
 👤 Author
-
 Pranav Gujjar
-Machine Learning & Data Science
+Machine Learning Engineer
