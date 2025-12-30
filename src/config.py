@@ -7,11 +7,6 @@ ARTIFACTS_DIR = PROJECT_ROOT / "artifacts"
 OUTPUTS_DIR = PROJECT_ROOT / "outputs" / "reports"
 
 MODEL_PATH = ARTIFACTS_DIR / "best_model_calibrated.joblib"
+
 RANDOM_STATE = 42
 TEST_SIZE = 0.2
-
-if not MODEL_PATH.exists():
-    raise FileNotFoundError(f"Model not found at {MODEL_PATH}")
-
-if not DATA_PATH.exists():
-    raise FileNotFoundError(f"Dataset not found at {DATA_PATH}")

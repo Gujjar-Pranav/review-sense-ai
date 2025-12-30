@@ -1,3 +1,4 @@
+# streamlit_app.py
 import streamlit as st
 import pandas as pd
 import numpy as np
@@ -65,27 +66,53 @@ st.markdown(
 )
 
 # =========================
-# LOAD MODEL + REPORTS
+# MODEL + REPORTS (Streamlit Cloud safe)
 # =========================
-if not MODEL_PATH.exists():
-    st.error("Model not found. Run: python main.py (from project root) to generate artifacts.")
+model = None
+
+# --- Model ---
+if MODEL_PATH.exists():
+    model = joblib.load(MODEL_PATH)
+else:
+    st.warning(
+        "Model not found yet. You can train it from here (first run) or commit the artifacts/ folder to GitHub."
+    )
+    if st.button("Train model now (first run)"):
+        try:
+            subprocess.run(
+                [sys.executable, str(PROJECT_ROOT / "main.py")],
+                cwd=str(PROJECT_ROOT),
+                check=True
+            )
+            st.success("Training complete. Rerunning the app now...")
+            st.rerun()
+        except Exception as e:
+            st.error(f"Training failed: {e}")
     st.stop()
 
-model = joblib.load(MODEL_PATH)
+# --- Reports (optional files) ---
+misclass_path = REPORTS_PATH / "misclassified.csv"
+compare_path = REPORTS_PATH / "model_comparison.csv"
 
-df_errors = pd.read_csv(REPORTS_PATH / "misclassified.csv")
-df_compare = pd.read_csv(REPORTS_PATH / "model_comparison.csv")
+df_errors = pd.read_csv(misclass_path) if misclass_path.exists() else pd.DataFrame()
+df_compare = pd.read_csv(compare_path) if compare_path.exists() else pd.DataFrame()
+
+if df_errors.empty:
+    st.info("No misclassified report found yet. It will appear after training/evaluation.")
+if df_compare.empty:
+    st.info("No model comparison report found yet. It will appear after training/evaluation.")
 
 # =========================
-# HEADER
+# HEADER + MODE
 # =========================
 st.title("💬 ReviewSense")
 st.caption("A customer-ready review intelligence dashboard")
 
-mode = st.radio("🧠 Explanation Mode", ["Simple Language", "Technical"], horizontal=True)
+# Keep mode in session_state (safer)
+st.session_state.mode = st.radio("🧠 Explanation Mode", ["Simple Language", "Technical"], horizontal=True)
 
 def explain(simple, technical):
-    return simple if mode == "Simple Language" else technical
+    return simple if st.session_state.get("mode", "Simple Language") == "Simple Language" else technical
 
 # =========================
 # 5-level buckets
@@ -111,7 +138,37 @@ def bucket_explainer(bucket: str) -> str:
             return desc
     return ""
 
-df_errors["bucket"] = df_errors["proba_pos"].apply(bucketize)
+# =========================
+# Baseline report safety + derived cols
+# =========================
+if not df_errors.empty:
+    # Ensure required columns exist if misclassified.csv exists
+    REQUIRED_ERROR_COLS = {"proba_pos", "review_raw"}
+    missing = REQUIRED_ERROR_COLS - set(df_errors.columns)
+    if missing:
+        st.error(
+            f"misclassified.csv is missing required columns: {missing}. "
+            "Please re-run training to regenerate reports."
+        )
+        st.stop()
+
+    # Ensure confidence exists consistently (avoid confidence_margin drift)
+    if "confidence" not in df_errors.columns:
+        df_errors["confidence"] = np.round(np.abs(df_errors["proba_pos"] - 0.5) * 2, 4)
+
+    # Ensure review_clean exists (used in keyword sections)
+    if "review_clean" not in df_errors.columns:
+        df_errors["review_clean"] = (
+            df_errors["review_raw"]
+            .astype(str)
+            .str.lower()
+            .str.replace(r"[^a-z\s]", " ", regex=True)
+            .str.replace(r"\s+", " ", regex=True)
+            .str.strip()
+        )
+
+    # Buckets
+    df_errors["bucket"] = df_errors["proba_pos"].apply(bucketize)
 
 # =========================
 # Global highlighting util
@@ -161,7 +218,7 @@ def get_top_words(calibrated_model, n=10):
 TOP_POS_WORDS, TOP_NEG_WORDS = get_top_words(model, n=12)
 
 # =========================
-# NEW: Review-level explainability (handles dual meaning)
+# Review-level explainability (dual meaning)
 # =========================
 def _get_fitted_tfidf_and_svm(calibrated_model):
     pipe = _get_fitted_pipeline_from_calibrated(calibrated_model)
@@ -176,7 +233,7 @@ def _get_fitted_tfidf_and_svm(calibrated_model):
 def explain_review_terms(calibrated_model, text: str, top_k_each=6):
     """
     Returns (pos_terms, neg_terms) based on TF-IDF(feature in review) * linear weight.
-    This is model-faithful for TF-IDF + LinearSVC.
+    Model-faithful for TF-IDF + LinearSVC.
     """
     tfidf, svm = _get_fitted_tfidf_and_svm(calibrated_model)
     if tfidf is None or svm is None or not text.strip():
@@ -241,16 +298,15 @@ def highlight_terms_both(text: str, pos_terms, neg_terms,
     return safe
 
 # =========================
-# NEW: Better explanations + noise filtering
+# Better explanations + noise filtering
 # =========================
 GENERIC_TERMS = {
     "thing", "things", "lot", "well", "really", "very", "much", "early", "right", "made",
     "get", "got", "one", "also", "still", "even", "just", "like", "would", "could", "dont",
-    "don't", "im", "i'm", "ive", "i've", "movie", "book"  # optional: remove these if you want
+    "don't", "im", "i'm", "ive", "i've", "movie", "book"
 }
 
 def filter_terms(terms):
-    """Remove generic/noisy tokens and very short tokens."""
     cleaned = []
     for t in terms:
         tt = t.strip().lower()
@@ -261,13 +317,12 @@ def filter_terms(terms):
         cleaned.append(t)
     return cleaned
 
-# Stronger business stopwords (avoid generic sentiment + media words)
 BUSINESS_STOP = {
     "good","great","bad","love","like","best","better","worst","nice","ok","okay",
     "book","movie","read","story","series","song","cd","dvd",
     "one","really","very","much","also","still","even","just","would","could","make","made",
     "get","got","dont","don't","im","i'm","ive","i've","cant","can't","time","work",
-    "buy","bought","use","used","using","product"  # "product" is generic here
+    "buy","bought","use","used","using","product"
 }
 
 def business_filter_terms(terms):
@@ -282,12 +337,11 @@ def business_filter_terms(terms):
     return out
 
 def get_highlight_k(level: str):
-    """Map UI toggle to how many terms we highlight (per side)."""
     if level == "Low":
         return 4
     if level == "Medium":
         return 7
-    return 12  # High
+    return 12
 
 def get_active_insights_df():
     """
@@ -296,30 +350,23 @@ def get_active_insights_df():
     """
     if st.session_state.get("batch_df") is not None and isinstance(st.session_state.batch_df, pd.DataFrame):
         out = st.session_state.batch_df
-        # get the text column used in batch scoring (stored earlier)
         text_col = str(out["_text_col_used"].iloc[0]) if "_text_col_used" in out.columns else None
         return out, "Uploaded File", text_col
+    # If baseline missing, still return empty df safely
     return df_errors, "Baseline Sample", "review_raw"
 
 def split_sentences(text: str):
-    """Simple sentence splitter (fast, no extra deps)."""
     if not text:
         return []
     parts = re.split(r'(?<=[.!?])\s+', text.strip())
     return [p.strip() for p in parts if p.strip()]
 
 def sentence_scores(calibrated_model, text: str):
-    """
-    Score each sentence by summing contributions of terms in that sentence.
-    Returns list of dicts with sentence + pos_score + neg_score + net.
-    """
     tfidf, svm = _get_fitted_tfidf_and_svm(calibrated_model)
     if tfidf is None or svm is None or not text.strip():
         return []
 
-    feature_names = tfidf.get_feature_names_out()
     coefs = svm.coef_[0]
-
     results = []
     for sent in split_sentences(text):
         X = tfidf.transform([sent]).tocoo()
@@ -328,40 +375,31 @@ def sentence_scores(calibrated_model, text: str):
         contrib = X.data * coefs[X.col]
         net = float(contrib.sum())
         pos = float(contrib[contrib > 0].sum()) if np.any(contrib > 0) else 0.0
-        neg = float(contrib[contrib < 0].sum()) if np.any(contrib < 0) else 0.0  # negative value
+        neg = float(contrib[contrib < 0].sum()) if np.any(contrib < 0) else 0.0
         results.append({"sentence": sent, "pos": pos, "neg": neg, "net": net})
     return results
 
 def extract_top_phrases_from_group(calibrated_model, texts, top_n=12):
-    """
-    Extract phrase-level drivers (especially bigrams) for a group of texts using
-    TF-IDF * linear SVM weights. Returns (pos_phrases, neg_phrases).
-    """
     tfidf, svm = _get_fitted_tfidf_and_svm(calibrated_model)
     if tfidf is None or svm is None or len(texts) == 0:
         return [], []
 
-    X = tfidf.transform(texts)  # sparse (n, vocab)
+    X = tfidf.transform(texts)
     coefs = svm.coef_[0]
     feature_names = tfidf.get_feature_names_out()
 
-    # group contribution: sum over docs of tfidf_value * weight
-    # compute weighted sum per feature
-    weighted = X.multiply(coefs).sum(axis=0)  # (1, vocab)
+    weighted = X.multiply(coefs).sum(axis=0)
     weighted = np.asarray(weighted).ravel()
 
-    # Keep only features that actually appear (non-zero tfidf)
     present = np.asarray(X.sum(axis=0)).ravel() > 0
     weighted = weighted * present
 
-    # prefer phrases (bigrams) for business readability
     is_phrase = np.array([" " in f for f in feature_names])
     weighted_phrase = weighted * is_phrase
 
     if np.all(weighted_phrase == 0):
         weighted_phrase = weighted  # fallback to unigrams
 
-    # get top
     pos_idx = np.argsort(weighted_phrase)[-200:][::-1]
     neg_idx = np.argsort(weighted_phrase)[:200]
 
@@ -373,21 +411,20 @@ def extract_top_phrases_from_group(calibrated_model, texts, top_n=12):
 
     return pos[:top_n], neg[:top_n]
 
+def top_keywords(df, text_col, n=12):
+    if df.empty or text_col not in df.columns:
+        return []
+    text = " ".join(df[text_col].astype(str).tolist())
+    tokens = [t for t in text.split() if len(t) > 2]
+    return Counter(tokens).most_common(n)
+
 def summarize_bucket_insights(subset_df, k=8):
-    """
-    Creates a clean summary sentence above examples.
-    Uses keywords from review_clean but filters generic words.
-    """
     kws = top_keywords(subset_df, "review_clean", n=40)
     kws = [(w, c) for (w, c) in kws if w.lower() not in GENERIC_TERMS and len(w) > 2]
     top = [w for w, _ in kws[:k]]
-
     if not top:
         return "Most reviews in this category share similar wording and tone."
-
     return f"Most reviews here mention: {', '.join(top[:5])}" + (f" (and also {', '.join(top[5:])})." if len(top) > 5 else ".")
-
-
 
 # =========================
 # Helpers: upload anything + auto column guessing
@@ -399,7 +436,7 @@ def load_any_table(uploaded_file) -> pd.DataFrame:
     if name.endswith(".tsv"):
         return pd.read_csv(uploaded_file, sep="\t")
     if name.endswith(".xlsx"):
-        return pd.read_excel(uploaded_file)  # requires openpyxl
+        return pd.read_excel(uploaded_file)
     return pd.read_csv(uploaded_file)
 
 def reason_counts(df):
@@ -423,10 +460,10 @@ def guess_text_column(df: pd.DataFrame) -> str | None:
 
     best_col, best_score = None, -1
     for c in df.columns:
-        s = df[c].astype(str)
         numeric_ratio = pd.to_numeric(df[c], errors="coerce").notna().mean()
         if numeric_ratio > 0.85:
             continue
+        s = df[c].astype(str)
         score = float(s.str.len().mean())
         if score > best_score:
             best_score = score
@@ -468,7 +505,6 @@ def safe_textcol_from_batch(df):
         return None
     if "_text_col_used" in df.columns:
         return str(df["_text_col_used"].iloc[0])
-    # fallback guesses
     for c in ["review", "text", "content", "comment", "message", "feedback", "body", "sentence"]:
         if c in df.columns:
             return c
@@ -478,6 +514,8 @@ def safe_textcol_from_batch(df):
 # Charts (compact + interactive)
 # =========================
 def donut_bucket_distribution(df, bucket_col="bucket"):
+    if df.empty or bucket_col not in df.columns:
+        return px.pie(pd.DataFrame({"Bucket": [], "Count": []}), names="Bucket", values="Count", hole=0.68, height=300)
     counts = df[bucket_col].value_counts().reindex(BUCKET_ORDER).fillna(0).astype(int).reset_index()
     counts.columns = ["Bucket", "Count"]
     fig = px.pie(counts, names="Bucket", values="Count", hole=0.68, height=300)
@@ -485,6 +523,8 @@ def donut_bucket_distribution(df, bucket_col="bucket"):
     return fig
 
 def bar_bucket_distribution(df, bucket_col="bucket"):
+    if df.empty or bucket_col not in df.columns:
+        return px.bar(pd.DataFrame({"Bucket": [], "Count": []}), x="Bucket", y="Count", height=270)
     counts = df[bucket_col].value_counts().reindex(BUCKET_ORDER).fillna(0).astype(int)
     chart_df = pd.DataFrame({"Bucket": counts.index, "Count": counts.values})
     fig = px.bar(chart_df, x="Bucket", y="Count", height=270)
@@ -492,14 +532,11 @@ def bar_bucket_distribution(df, bucket_col="bucket"):
     return fig
 
 def confidence_hist(df, proba_col="proba_pos"):
+    if df.empty or proba_col not in df.columns:
+        return px.histogram(pd.DataFrame({proba_col: []}), x=proba_col, nbins=30, height=270)
     fig = px.histogram(df, x=proba_col, nbins=30, height=270)
     fig.update_layout(margin=dict(t=10, b=10, l=10, r=10), xaxis_title="P(Positive)", yaxis_title=None)
     return fig
-
-def top_keywords(df, text_col, n=12):
-    text = " ".join(df[text_col].astype(str).tolist())
-    tokens = [t for t in text.split() if len(t) > 2]
-    return Counter(tokens).most_common(n)
 
 def kw_bar(kws, height=320, title=None):
     if not kws:
@@ -536,10 +573,16 @@ st.session_state.page = st.sidebar.radio("Go to", pages, index=pages.index(st.se
 if st.session_state.page == "Overview":
     st.subheader("📊 Overview")
 
-    total = len(df_errors)
-    pos_rate = float((df_errors["true_label"] == 1).mean())
-    neg_rate = 1 - pos_rate
-    best_f1 = float(df_compare.iloc[0]["F1"]) if "F1" in df_compare.columns else None
+    if df_errors.empty:
+        st.info(
+            "Baseline report not found (misclassified.csv). "
+            "Upload a file in Quick Analyze to test the model, or re-run training to generate reports."
+        )
+
+    total = int(len(df_errors)) if not df_errors.empty else 0
+    pos_rate = float((df_errors["true_label"] == 1).mean()) if (not df_errors.empty and "true_label" in df_errors.columns) else 0.0
+    neg_rate = 1 - pos_rate if total else 0.0
+    best_f1 = float(df_compare.iloc[0]["F1"]) if (not df_compare.empty and "F1" in df_compare.columns) else None
 
     k1, k2, k3, k4 = st.columns(4)
     with k1:
@@ -564,10 +607,13 @@ if st.session_state.page == "Overview":
             unsafe_allow_html=True
         )
     with k4:
+        label = explain("AI Reliability", "Best F1 Score")
+        val = "High" if st.session_state.mode == "Simple Language" else (f"{best_f1:.4f}" if best_f1 is not None else "N/A")
+        sub = explain("Consistency of predictions", "Top-ranked model")
         st.markdown(
-            f"<div class='rs-card'><div class='rs-title'>{explain('AI Reliability', 'Best F1 Score')}</div>"
-            f"<div class='rs-kpi'>{('High' if mode=='Simple Language' else f'{best_f1:.4f}')}</div>"
-            f"<div class='rs-sub'>{explain('Consistency of predictions', 'Top-ranked model')}</div></div>",
+            f"<div class='rs-card'><div class='rs-title'>{label}</div>"
+            f"<div class='rs-kpi'>{val}</div>"
+            f"<div class='rs-sub'>{sub}</div></div>",
             unsafe_allow_html=True
         )
 
@@ -579,14 +625,17 @@ if st.session_state.page == "Overview":
         "Buckets are based on calibrated probability ranges."
     ))
 
-    bucket_counts = df_errors["bucket"].value_counts().reindex(BUCKET_ORDER).fillna(0).astype(int)
+    if not df_errors.empty and "bucket" in df_errors.columns:
+        bucket_counts = df_errors["bucket"].value_counts().reindex(BUCKET_ORDER).fillna(0).astype(int)
+    else:
+        bucket_counts = pd.Series({b: 0 for b in BUCKET_ORDER})
 
     card_cols = st.columns(5)
     for i, bucket_name in enumerate(BUCKET_ORDER):
         with card_cols[i]:
-            count = int(bucket_counts[bucket_name])
+            count = int(bucket_counts.get(bucket_name, 0))
             pct = (count / total) * 100 if total else 0
-            if st.button(f"{bucket_name}\n\n{count:,} ({pct:.1f}%)", use_container_width=True):
+            if st.button(f"{bucket_name}\n\n{count:,} ({pct:.1f}%)", use_container_width=True, disabled=(total == 0)):
                 st.session_state.selected_bucket = bucket_name
                 st.session_state.page = "Category Details"
                 st.rerun()
@@ -605,7 +654,7 @@ if st.session_state.page == "Overview":
         st.markdown("<div class='rs-card'><div class='rs-title'>Confidence Spread</div></div>", unsafe_allow_html=True)
         st.plotly_chart(confidence_hist(df_errors), use_container_width=True)
 
-    # Quick Analyze at end
+    # Quick Analyze
     st.markdown("---")
     st.markdown("### ⚡ Quick Analyze (Type anything or Upload anything)")
     st.caption(explain(
@@ -635,7 +684,6 @@ if st.session_state.page == "Overview":
                 f"P(Positive)={p:.4f} | threshold={threshold:.2f} | pred={verdict}"
             ))
 
-            # NEW: model-based term highlights (dual meaning)
             pos_terms, neg_terms = explain_review_terms(model, review_text, top_k_each=12)
             st.markdown("**Highlighted cues (green helps / red hurts):**")
             st.markdown(highlight_terms_both(review_text, pos_terms, neg_terms), unsafe_allow_html=True)
@@ -683,7 +731,7 @@ if st.session_state.page == "Overview":
             out = df_up.copy()
             out["_text_col_used"] = text_col
             out["proba_pos"] = proba
-            out["bucket"] = [bucketize(p) for p in proba]
+            out["bucket"] = [bucketize(pv) for pv in proba]
             out["prediction"] = np.where(out["proba_pos"] >= threshold, "Positive", "Negative")
             out["confidence"] = np.round(np.abs(out["proba_pos"] - 0.5) * 2, 4)
 
@@ -701,17 +749,17 @@ if st.session_state.page == "Overview":
             st.warning("Type a review OR upload a file to analyze.")
 
 # =========================
-# PAGE: CATEGORY DETAILS (drilldown)
+# PAGE: CATEGORY DETAILS
 # =========================
 elif st.session_state.page == "Category Details":
+    if df_errors.empty:
+        st.info("Baseline reports not available. Use Overview → Quick Analyze upload to explore your dataset.")
+        st.stop()
+
     bucket = st.selectbox("Choose a category", options=BUCKET_ORDER,
                           index=BUCKET_ORDER.index(st.session_state.selected_bucket))
     st.session_state.selected_bucket = bucket
-    highlight_level = st.select_slider(
-        "Highlight strength",
-        options=["Low", "Medium", "High"],
-        value="Medium"
-    )
+    highlight_level = st.select_slider("Highlight strength", options=["Low", "Medium", "High"], value="Medium")
     k_each = get_highlight_k(highlight_level)
 
     st.subheader(f"🔎 Category Details — {bucket}")
@@ -727,16 +775,13 @@ elif st.session_state.page == "Category Details":
 
     with a:
         st.markdown("#### Examples (most confident)")
-        show = subset.sort_values("confidence_margin", ascending=False).head(12)
+        show = subset.sort_values("confidence", ascending=False).head(12)
 
         for _, r in show.iterrows():
             txt = str(r.get("review_raw", ""))
             p = float(r.get("proba_pos", 0.5))
 
-            # model-based terms (dual meaning)
             pos_terms, neg_terms = explain_review_terms(model, txt, top_k_each=k_each)
-
-            # remove generic/noisy
             pos_terms = filter_terms(pos_terms)
             neg_terms = filter_terms(neg_terms)
 
@@ -744,11 +789,9 @@ elif st.session_state.page == "Category Details":
             if pos_terms and neg_terms:
                 mixed_badge = "<span class='rs-chip'>⚠ Mixed signals</span>"
 
-            # chips
             chip_terms = (neg_terms[:4] + pos_terms[:4])
             chips_html = "".join([f"<span class='rs-chip'>{t}</span>" for t in chip_terms])
 
-            # sentence-level explanation (best positive + best negative sentence)
             sent_info = sentence_scores(model, txt)
             best_pos = max(sent_info, key=lambda x: x["net"], default=None)
             best_neg = min(sent_info, key=lambda x: x["net"], default=None)
@@ -791,7 +834,7 @@ elif st.session_state.page == "Category Details":
         ))
 
 # =========================
-# PAGE: BATCH RESULTS (uploaded file insights)
+# PAGE: BATCH RESULTS
 # =========================
 elif st.session_state.page == "Batch Results":
     st.subheader("📦 Batch Results (Uploaded File)")
@@ -806,9 +849,6 @@ elif st.session_state.page == "Batch Results":
         st.error("Text column missing in batch results. Upload again and confirm mapping.")
         st.stop()
 
-    # =========================
-    # EXEC SUMMARY (manager view)
-    # =========================
     total = len(out)
     pct_pos = float((out["bucket"].isin(["Strongly Positive 😍", "Positive 🙂"])).mean()) * 100
     pct_neg = float((out["bucket"].isin(["Strongly Negative 😡", "Negative 🙁"])).mean()) * 100
@@ -844,7 +884,6 @@ elif st.session_state.page == "Batch Results":
             unsafe_allow_html=True
         )
 
-    # One-line exec summary
     st.success(
         explain(
             f"Summary: {pct_pos:.1f}% positive, {pct_neg:.1f}% negative, {pct_mix:.1f}% mixed. "
@@ -855,9 +894,6 @@ elif st.session_state.page == "Batch Results":
 
     st.markdown("---")
 
-    # =========================
-    # TOP ISSUES / TOP WINS (phrases, not generic words)
-    # =========================
     neg_texts = out[out["bucket"].isin(["Strongly Negative 😡", "Negative 🙁"])][text_col_used].astype(str).tolist()
     pos_texts = out[out["bucket"].isin(["Strongly Positive 😍", "Positive 🙂"])][text_col_used].astype(str).tolist()
 
@@ -911,9 +947,6 @@ elif st.session_state.page == "Batch Results":
 
     st.markdown("---")
 
-    # =========================
-    # VISUALS
-    # =========================
     c1, c2, c3 = st.columns([1.1, 1.2, 1.2])
     with c1:
         st.markdown("<div class='rs-card'><div class='rs-title'>Distribution (5 levels)</div></div>", unsafe_allow_html=True)
@@ -927,9 +960,6 @@ elif st.session_state.page == "Batch Results":
 
     st.markdown("---")
 
-    # =========================
-    # BUCKET DRILLDOWN (interactive)
-    # =========================
     st.markdown("## 🔎 Drilldown by Category")
     st.caption("Pick a category to see examples, themes, and what it means.")
 
@@ -948,14 +978,12 @@ elif st.session_state.page == "Batch Results":
     if keyword.strip():
         view = view[view[text_col_used].astype(str).str.contains(keyword, case=False, na=False)]
 
-    # show quick drill summary
     st.markdown(
         f"<div class='rs-card'><div class='rs-title'>Filtered results</div>"
         f"<div class='rs-sub'>{len(view):,} rows match your filters</div></div>",
         unsafe_allow_html=True
     )
 
-    # theme phrases for selected bucket
     if pick_bucket != "All" and len(view) > 0:
         bucket_texts = view[text_col_used].astype(str).tolist()
         pos_phr, neg_phr = extract_top_phrases_from_group(model, bucket_texts, top_n=10)
@@ -983,9 +1011,6 @@ elif st.session_state.page == "Batch Results":
 
     st.markdown("---")
 
-    # =========================
-    # TABLE + DOWNLOAD
-    # =========================
     st.markdown("## 📋 Results Table (download-ready)")
     st.dataframe(view.head(200), use_container_width=True)
 
@@ -997,18 +1022,20 @@ elif st.session_state.page == "Batch Results":
         use_container_width=True
     )
 
-
-# Page Business insight
-
+# =========================
+# PAGE: BUSINESS INSIGHTS
+# =========================
 elif st.session_state.page == "Business Insights":
     st.subheader("💡 Business Insights (Executive View)")
 
     active_df, source_label, text_col = get_active_insights_df()
     st.caption(f"Source: **{source_label}** — insights update automatically when you upload a file.")
 
-    # Ensure required columns exist
+    if active_df.empty:
+        st.info("No data available yet. Upload a CSV/TSV/XLSX in Overview → Quick Analyze.")
+        st.stop()
+
     if "bucket" not in active_df.columns:
-        # if it's missing, compute from proba_pos (rare case)
         if "proba_pos" in active_df.columns:
             active_df = active_df.copy()
             active_df["bucket"] = active_df["proba_pos"].apply(bucketize)
@@ -1016,12 +1043,10 @@ elif st.session_state.page == "Business Insights":
             st.error("This dataset doesn't contain sentiment probabilities/buckets yet.")
             st.stop()
 
-    # Make sure we have text to analyze
     if text_col is None or text_col not in active_df.columns:
         st.error("Text column not found for insights. Upload again and confirm text column mapping.")
         st.stop()
 
-    # If review_clean doesn't exist for uploaded file, create a lightweight cleaned version
     if "review_clean" not in active_df.columns:
         active_df = active_df.copy()
         active_df["review_clean"] = (
@@ -1033,19 +1058,16 @@ elif st.session_state.page == "Business Insights":
             .str.strip()
         )
 
-    # Group buckets (works for both baseline and uploaded)
     neg_group = active_df[active_df["bucket"].isin(["Strongly Negative 😡", "Negative 🙁"])].copy()
     pos_group = active_df[active_df["bucket"].isin(["Strongly Positive 😍", "Positive 🙂"])].copy()
     mix_group = active_df[active_df["bucket"] == "Mixed 😐"].copy()
 
-    # Phrase extraction uses raw text, so we pass the chosen text column
     pos_texts = pos_group[text_col].astype(str).tolist()
     neg_texts = neg_group[text_col].astype(str).tolist()
 
     top_pos_phrases, _ = extract_top_phrases_from_group(model, pos_texts, top_n=10)
     _, top_neg_phrases = extract_top_phrases_from_group(model, neg_texts, top_n=10)
 
-    # KPIs
     total = len(active_df)
     pct_pos = (len(pos_group) / total * 100) if total else 0
     pct_neg = (len(neg_group) / total * 100) if total else 0
@@ -1099,13 +1121,9 @@ elif st.session_state.page == "Business Insights":
         st.markdown("</div>", unsafe_allow_html=True)
 
         st.markdown("### 🧾 Proof (Customer Quotes)")
-        # Pick quotes from strongest negative examples (if confidence exists)
         quote_df = neg_group.copy()
         if "confidence" in quote_df.columns:
             quote_df = quote_df.sort_values("confidence", ascending=False)
-        elif "confidence_margin" in quote_df.columns:
-            quote_df = quote_df.sort_values("confidence_margin", ascending=False)
-
         quote_df = quote_df.head(2)
         for _, row in quote_df.iterrows():
             quote = str(row.get(text_col, ""))[:260].strip()
@@ -1124,13 +1142,11 @@ elif st.session_state.page == "Business Insights":
         )
     )
 
-    # Optional: show a small note if no upload yet
     if source_label == "Baseline Sample":
         st.info("Upload a CSV/TSV/XLSX in Overview to get Business Insights for your own dataset.")
 
-
 # =========================
-# PAGE: "Tricky Reviews"
+# PAGE: TRICKY REVIEWS
 # =========================
 elif st.session_state.page == "Tricky Reviews":
     st.subheader("🧪 Tricky Reviews (AI Limitations)")
@@ -1139,9 +1155,12 @@ elif st.session_state.page == "Tricky Reviews":
         "These cases help you understand where the model can be uncertain or misread intent."
     ))
 
-    # Choose data source: uploaded file if available, else baseline
     active_df, source_label, text_col = get_active_insights_df()
     st.caption(f"Source: **{source_label}**")
+
+    if active_df.empty:
+        st.info("No data available yet. Upload a CSV/TSV/XLSX in Overview → Quick Analyze.")
+        st.stop()
 
     if text_col is None or text_col not in active_df.columns:
         st.error("Text column not found for this dataset.")
@@ -1149,71 +1168,52 @@ elif st.session_state.page == "Tricky Reviews":
 
     df = active_df.copy()
 
-    # Ensure probability + bucket exists (for uploaded file it should)
     if "proba_pos" not in df.columns:
-        st.error("This dataset does not contain proba_pos. Run predictions first.")
+        st.error("This dataset does not contain proba_pos. Run predictions first (Overview → Upload → Run Analysis).")
         st.stop()
     if "bucket" not in df.columns:
         df["bucket"] = df["proba_pos"].apply(bucketize)
+    if "confidence" not in df.columns:
+        df["confidence"] = np.round(np.abs(df["proba_pos"] - 0.5) * 2, 4)
 
-    # --- Create "hardness signals" (human-readable) ---
     def detect_reasons(text: str):
         t = (text or "").lower()
         reasons = []
-
-        # Mixed sentiment cue words
         if any(w in t for w in [" but ", " however ", " although ", " though ", " yet "]):
             reasons.append("Mixed feelings")
-
-        # Negation patterns
         if any(w in t for w in [" not ", " never ", " no ", "n't "]):
             reasons.append("Negation (not/never)")
-
-        # Very short review
         if len(t.split()) <= 5:
             reasons.append("Too short / low context")
-
-        # Strong punctuation / caps (rough sarcasm-ish cue)
         if "!!" in t or "??" in t or (sum(ch.isupper() for ch in (text or "")) > 10):
             reasons.append("Emphasis / tone (caps/punct)")
-
-        # If nothing detected
         if not reasons:
             reasons.append("Unclear / subtle wording")
         return reasons
 
     df["_reasons"] = df[text_col].astype(str).apply(detect_reasons)
     df["_reason_main"] = df["_reasons"].apply(lambda xs: xs[0] if xs else "Unclear / subtle wording")
+    df["_uncertain"] = (df["proba_pos"].between(0.45, 0.65)) | (df["confidence"] < 0.35)
 
-    # --- Define “needs review” region ---
-    # If probability close to 0.5 → mixed/uncertain
-    df["_uncertain"] = (df["proba_pos"].between(0.45, 0.65)) | (df.get("confidence", 0.0) < 0.35)
-
-    # UI filters
     counts = reason_counts(df)
 
     st.markdown("### 📌 Tricky Review Categories")
-    st.caption(
-        "These categories explain *why* a review may be hard for AI to judge accurately."
-    )
+    st.caption("These categories explain *why* a review may be hard for AI to judge accurately.")
 
     if "tricky_focus" not in st.session_state:
         st.session_state.tricky_focus = "All tricky reviews"
 
-
     def focus_button(label, key):
         active = (st.session_state.tricky_focus == key)
         if st.button(
-                f"{label}\n\n{counts.get(key, 0):,}",
-                use_container_width=True,
-                type=("primary" if active else "secondary")
+            f"{label}\n\n{counts.get(key, 0):,}",
+            use_container_width=True,
+            type=("primary" if active else "secondary")
         ):
             st.session_state.tricky_focus = key
             st.rerun()
 
-
     b1, b2, b3, b4, b5 = st.columns(5)
-
     with b1:
         focus_button("Needs Human Review", "Needs manual review (uncertain)")
     with b2:
@@ -1240,13 +1240,8 @@ elif st.session_state.page == "Tricky Reviews":
     }
     focus_label = FRIENDLY_FOCUS.get(focus, focus)
 
-    # Compact visualization
     chart_df = pd.DataFrame({
-        "Category": ["Needs Human Review",
-        "Mixed Feelings",
-        "Confusing Wording",
-        "Too Little Detail",
-        "Strong Tone / Emphasis"],
+        "Category": ["Needs Human Review", "Mixed Feelings", "Confusing Wording", "Too Little Detail", "Strong Tone / Emphasis"],
         "Count": [
             counts["Needs manual review (uncertain)"],
             counts["Mixed sentiment cases"],
@@ -1256,22 +1251,15 @@ elif st.session_state.page == "Tricky Reviews":
         ]
     })
     fig = px.bar(chart_df, x="Category", y="Count", height=260)
-    fig.update_layout(
-        margin=dict(t=10, b=10, l=10, r=10),
-        xaxis_title=None,
-        yaxis_title=None
-    )
+    fig.update_layout(margin=dict(t=10, b=10, l=10, r=10), xaxis_title=None, yaxis_title=None)
     st.plotly_chart(fig, use_container_width=True)
 
-    # Other controls (unchanged)
     c2, c3 = st.columns([1.2, 1.2])
     with c2:
         max_rows = st.slider("How many examples to show", 5, 30, 12, 1)
     with c3:
         highlight_level = st.select_slider("Highlight strength", ["Low", "Medium", "High"], value="Medium")
         k_each = get_highlight_k(highlight_level)
-
-    #st.info(f"Showing: **{focus}** — Total reviews in this category: **{counts.get(focus, len(df)):,}**")
 
     view = df.copy()
 
@@ -1284,16 +1272,10 @@ elif st.session_state.page == "Tricky Reviews":
     elif focus == "Very short reviews":
         view = view[view["_reasons"].apply(lambda xs: "Too short / low context" in xs)]
     elif focus == "Emphasis / tone cases":
-        view = view[view["_reasons"].apply( lambda xs: "Emphasis / tone (caps/punct)" in xs )]
+        view = view[view["_reasons"].apply(lambda xs: "Emphasis / tone (caps/punct)" in xs)]
 
-    # Sort: most uncertain first (closest to 0.5), then high confidence
     view["_dist_to_mid"] = (view["proba_pos"] - 0.5).abs()
     view = view.sort_values(["_dist_to_mid"], ascending=True).head(max_rows)
-
-    # Quick summary KPI
-    total = len(df)
-    tricky = len(view)
-    uncertain_cnt = int(df["_uncertain"].sum())
 
     tmp = df.copy()
     if focus == "Needs manual review (uncertain)":
@@ -1309,14 +1291,17 @@ elif st.session_state.page == "Tricky Reviews":
 
     focus_total = len(tmp)
 
+    total_all = len(df)
+    showing = len(view)
+
     st.markdown(
         f"""
         <div class="rs-card" style="padding:10px 12px;">
           <div style="display:flex; gap:10px; flex-wrap:wrap; align-items:center;">
             <span class="rs-chip">Viewing: <b>{focus_label}</b></span>
             <span class="rs-chip">Category size: <b>{focus_total:,}</b></span>
-            <span class="rs-chip">Showing: <b>{tricky:,}</b></span>
-            <span class="rs-chip">Dataset: <b>{total:,}</b></span>
+            <span class="rs-chip">Showing: <b>{showing:,}</b></span>
+            <span class="rs-chip">Dataset: <b>{total_all:,}</b></span>
           </div>
         </div>
         """,
@@ -1329,12 +1314,10 @@ elif st.session_state.page == "Tricky Reviews":
         bucket = r.get("bucket", bucketize(p))
         reasons = r.get("_reasons", ["Unclear / subtle wording"])
 
-        # Model-based terms (dual meaning)
         pos_terms, neg_terms = explain_review_terms(model, txt, top_k_each=k_each)
         pos_terms = filter_terms(pos_terms)
         neg_terms = filter_terms(neg_terms)
 
-        # sentence-level explanation
         sent_info = sentence_scores(model, txt)
         best_pos = max(sent_info, key=lambda x: x["net"], default=None)
         best_neg = min(sent_info, key=lambda x: x["net"], default=None)
@@ -1352,9 +1335,7 @@ elif st.session_state.page == "Tricky Reviews":
 
         card_html = (
             "<div class='rs-card'>"
-            f"<div class='rs-sub'>"
-            f"{explain('AI score', 'P(Positive)')}: <b>{p:.3f}</b> | {bucket}"
-            f"</div>"
+            f"<div class='rs-sub'>{explain('AI score', 'P(Positive)')}: <b>{p:.3f}</b> | {bucket}</div>"
             f"<div style='margin-top:6px'>{reason_chips}</div>"
             f"<div style='margin-top:10px'>{highlight_terms_both(txt, pos_terms, neg_terms)}</div>"
             f"{sentence_html}"
@@ -1374,9 +1355,8 @@ elif st.session_state.page == "Tricky Reviews":
     ))
 
 # =========================
-# PAGE: MODEL TRUST
-
-
+# PAGE: TRUST & RELIABILITY
+# =========================
 elif st.session_state.page in ["Model Trust", "Trust & Reliability"]:
     st.subheader("🛡️ Trust Dashboard")
     st.caption("Executive view: how reliable the scores are and where risk is concentrated.")
@@ -1385,17 +1365,17 @@ elif st.session_state.page in ["Model Trust", "Trust & Reliability"]:
     df = active_df.copy()
     st.caption(f"Source: **{source_label}**")
 
+    if df.empty:
+        st.info("No data available yet. Upload a CSV/TSV/XLSX in Overview → Quick Analyze.")
+        st.stop()
+
     if "proba_pos" not in df.columns:
         st.error("No probability scores found. Upload a file and run analysis first.")
         st.stop()
 
-    # Confidence (if missing)
     if "confidence" not in df.columns:
         df["confidence"] = np.round(np.abs(df["proba_pos"] - 0.5) * 2, 4)
 
-    # =========================
-    # TRUST ZONES + CLICK TO DRILLDOWN
-    # =========================
     st.markdown("### ✅ Score Zones (Safe vs Needs Review)")
     st.caption("Click a segment to view the exact reviews behind that number.")
 
@@ -1420,11 +1400,9 @@ elif st.session_state.page in ["Model Trust", "Trust & Reliability"]:
     total = len(df)
     zdf = pd.DataFrame({"Zone": zcounts.index, "Count": zcounts.values})
 
-    # Ensure session state exists
     if "trust_zone_focus" not in st.session_state:
         st.session_state.trust_zone_focus = None
 
-    # Clickable segment buttons (more reliable than clicking the pie slice)
     seg1, seg2, seg3, seg4 = st.columns([1, 1, 1, 1])
 
     def zone_btn(label: str, zone_key: str, count: int, col):
@@ -1447,7 +1425,6 @@ elif st.session_state.page in ["Model Trust", "Trust & Reliability"]:
             st.session_state.trust_zone_focus = None
             st.rerun()
 
-    # KPI chips (compact)
     needs_review = int(zcounts["Needs review (Mixed/uncertain)"])
     auto_ok = int(zcounts["Auto-approve (Strong positive)"])
     auto_bad = int(zcounts["Auto-escalate (Strong negative)"])
@@ -1466,14 +1443,10 @@ elif st.session_state.page in ["Model Trust", "Trust & Reliability"]:
         unsafe_allow_html=True
     )
 
-    # Visual donut
     fig_zone = px.pie(zdf, names="Zone", values="Count", hole=0.65, height=320)
     fig_zone.update_layout(margin=dict(t=10, b=10, l=10, r=10), legend_title_text="")
     st.plotly_chart(fig_zone, use_container_width=True)
 
-    # =========================
-    # DRILLDOWN PANEL + ONE SENTENCE SUMMARY
-    # =========================
     zone_focus = st.session_state.trust_zone_focus
 
     def tokenize_for_summary(text: str):
@@ -1481,7 +1454,6 @@ elif st.session_state.page in ["Model Trust", "Trust & Reliability"]:
         toks = [t for t in toks if len(t) >= 3]
         return toks
 
-    # stoplist so generic words don’t dominate
     SUMMARY_STOP = set([
         "the", "and", "for", "with", "this", "that", "have", "had", "was", "were", "are",
         "but", "not", "you", "your", "they", "them", "its", "it's", "very", "just",
@@ -1520,7 +1492,6 @@ elif st.session_state.page in ["Model Trust", "Trust & Reliability"]:
             if search_kw.strip():
                 drill = drill[drill[text_col].astype(str).str.contains(search_kw, case=False, na=False)]
 
-            # Summary (manager-friendly)
             st.markdown(
                 f"""
                 <div class="rs-card" style="padding:10px 12px;">
@@ -1530,7 +1501,6 @@ elif st.session_state.page in ["Model Trust", "Trust & Reliability"]:
                 unsafe_allow_html=True
             )
 
-            # Sort to show most informative examples
             if zone_focus == "Auto-approve (Strong positive)":
                 drill = drill.sort_values("proba_pos", ascending=False)
             elif zone_focus == "Auto-escalate (Strong negative)":
@@ -1553,7 +1523,6 @@ elif st.session_state.page in ["Model Trust", "Trust & Reliability"]:
                 unsafe_allow_html=True
             )
 
-            # Render examples with dual-signal highlights
             for _, r in drill_show.iterrows():
                 txt = str(r.get(text_col, ""))
                 p = float(r.get("proba_pos", 0.5))
@@ -1570,7 +1539,6 @@ elif st.session_state.page in ["Model Trust", "Trust & Reliability"]:
                     unsafe_allow_html=True
                 )
 
-            # Download full segment
             safe_name = zone_focus.lower().replace(" ", "_").replace("(", "").replace(")", "").replace("/", "_")
             st.download_button(
                 "Download this segment (CSV)",
@@ -1582,19 +1550,12 @@ elif st.session_state.page in ["Model Trust", "Trust & Reliability"]:
 
     st.markdown("---")
 
-    # =========================
-    # RISK & CONFIDENCE
-    # =========================
-
     st.markdown("### 📊 Risk & Confidence (Executive)")
 
-    # Core rates
-    total = len(df)
     risk_pct = float(((df["proba_pos"] < 0.45).mean()) * 100)
     needs_review_pct = float((df["proba_pos"].between(0.45, 0.65).mean()) * 100)
     low_conf_pct = float(((df["confidence"] < 0.35).mean()) * 100)
 
-    # Compact KPI chips (no big cards)
     st.markdown(
         f"""
         <div class="rs-card" style="padding:10px 12px;">
@@ -1608,23 +1569,17 @@ elif st.session_state.page in ["Model Trust", "Trust & Reliability"]:
         unsafe_allow_html=True
     )
 
-
-    # =========================
-    # Executive Verdict Badge (LOW / MED / HIGH)
-    # =========================
     def level_from_pct(p, low=20, high=40):
-        # returns (label, emoji)
         if p < low:
             return ("LOW", "🟢")
         if p < high:
             return ("MEDIUM", "🟡")
         return ("HIGH", "🔴")
 
-
     risk_lvl, risk_emoji = level_from_pct(risk_pct, low=20, high=40)
     review_lvl, review_emoji = level_from_pct(needs_review_pct, low=20, high=35)
-    conf_lvl, conf_emoji = level_from_pct(low_conf_pct, low=25,
-                                          high=40)  # here "low_conf_pct" is bad, so higher = worse
+    conf_lvl, conf_emoji = level_from_pct(low_conf_pct, low=25, high=40)
+
     st.caption(
         explain(
             f"About {risk_pct:.0f}% of customers show negative sentiment. "
@@ -1636,7 +1591,6 @@ elif st.session_state.page in ["Model Trust", "Trust & Reliability"]:
         )
     )
 
-    # Recommendation logic
     if risk_lvl == "HIGH" or conf_lvl == "HIGH":
         rec = explain(
             "Recommendation: treat this dataset as high-risk. Route critical cases to humans first.",
@@ -1661,117 +1615,12 @@ elif st.session_state.page in ["Model Trust", "Trust & Reliability"]:
             <span class="rs-chip">{review_emoji} Human Review Load: <b>{review_lvl}</b></span>
             <span class="rs-chip">{conf_emoji} Model Confidence: <b>{conf_lvl}</b></span>
           </div>
-          <div class="rs-sub" style="margin-top:8px;">
-            <b>{rec}</b>
-          </div>
+          <div class="rs-sub" style="margin-top:8px;"><b>{rec}</b></div>
         </div>
         """,
         unsafe_allow_html=True
     )
 
-    c1, c2 = st.columns([1.0, 1.2])
-
-    with c1:
-        # --------- Risk Gauge ----------
-        import plotly.graph_objects as go
-
-        fig_gauge = go.Figure(
-            go.Indicator(
-                mode="gauge+number",
-                value=risk_pct,
-                number={"suffix": "%"},
-                title={"text": "Negative Risk"},
-                gauge={
-                    "axis": {"range": [0, 100]},
-                    "bar": {"thickness": 0.22},
-                    "steps": [
-                        {"range": [0, 20], "color": "rgba(0,255,0,0.10)"},
-                        {"range": [20, 40], "color": "rgba(255,255,0,0.10)"},
-                        {"range": [40, 100], "color": "rgba(255,0,0,0.10)"},
-                    ],
-                    "threshold": {"line": {"width": 3}, "thickness": 0.8, "value": 40},
-                },
-            )
-        )
-        fig_gauge.update_layout(height=260, margin=dict(t=40, b=10, l=10, r=10))
-        st.plotly_chart(fig_gauge, use_container_width=True)
-
-        st.markdown(
-            f"""
-            <div class="rs-card"><div class="rs-sub">
-            {explain(
-                "Higher risk means more unhappy customers in this dataset.",
-                "Risk = % of reviews with P(Positive) < 0.45."
-            )}
-            </div></div>
-            """,
-            unsafe_allow_html=True
-        )
-        st.markdown(
-            f"""
-                    <div class="rs-card">
-                      <div class="rs-sub">
-                        {explain(
-                f"About {risk_pct:.0f}% of customers are unhappy. "
-                f"Nearly {needs_review_pct:.0f}% of reviews need a second look. "
-                f"The AI is unsure about {low_conf_pct:.0f}% of cases.",
-                f"{risk_pct:.1f}% reviews indicate negative sentiment. "
-                f"{needs_review_pct:.1f}% fall into the manual review zone. "
-                f"{low_conf_pct:.1f}% have low prediction confidence."
-            )}
-                      </div>
-                    </div>
-                    """,
-            unsafe_allow_html=True
-        )
-    with c2:
-        # --------- Confidence Zones (executive view) ----------
-        # Bucket confidence into zones
-        def conf_zone(c):
-            if c < 0.35:
-                return "Low (needs human check)"
-            if c < 0.65:
-                return "Medium"
-            return "High (reliable)"
-
-
-        tmp = df.copy()
-        tmp["_conf_zone"] = tmp["confidence"].apply(conf_zone)
-        order = ["Low (needs human check)", "Medium", "High (reliable)"]
-        cz = tmp["_conf_zone"].value_counts().reindex(order).fillna(0).astype(int).reset_index()
-        cz.columns = ["Confidence Zone", "Count"]
-        cz["Percent"] = cz["Count"] / max(1, total) * 100
-
-        fig_confbar = px.bar(
-            cz,
-            x="Percent",
-            y="Confidence Zone",
-            orientation="h",
-            height=260,
-            text=cz["Count"].map(lambda x: f"{x:,}")
-        )
-        fig_confbar.update_layout(
-            margin=dict(t=10, b=10, l=10, r=10),
-            xaxis_title="Percent of reviews",
-            yaxis_title=None,
-        )
-        st.plotly_chart(fig_confbar, use_container_width=True)
-
-        low_conf = int((df["confidence"] < 0.35).sum())
-        st.markdown(
-            f"""
-            <div class="rs-card"><div class="rs-sub">
-            Low-confidence reviews: <b>{low_conf:,}</b> ({low_conf / max(1, total) * 100:.1f}%). 
-            {explain("These are the ones to review manually.", "Flag these for QA / human review.")}
-            </div></div>
-            """,
-            unsafe_allow_html=True
-        )
-
-
-    # =========================
-    # RECOMMENDED RULES (SHORT)
-    # =========================
     st.markdown("### ✅ Recommended Usage Rules")
     st.markdown(
         """
@@ -1786,7 +1635,6 @@ elif st.session_state.page in ["Model Trust", "Trust & Reliability"]:
         unsafe_allow_html=True
     )
 
-    # Optional technical details hidden
     with st.expander("Technical details (optional)"):
-        if "df_compare" in globals() and isinstance(df_compare, pd.DataFrame) and len(df_compare) > 0:
+        if not df_compare.empty:
             st.dataframe(df_compare.head(10), use_container_width=True)
