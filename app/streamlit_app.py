@@ -96,11 +96,26 @@ compare_path = REPORTS_PATH / "model_comparison.csv"
 
 df_errors = pd.read_csv(misclass_path) if misclass_path.exists() else pd.DataFrame()
 df_compare = pd.read_csv(compare_path) if compare_path.exists() else pd.DataFrame()
+if df_errors.empty or df_compare.empty:
+    st.warning(
+        "Baseline reports not found yet (misclassified.csv / model_comparison.csv). "
+        "Generate them now?"
+    )
 
-if df_errors.empty:
-    st.info("No misclassified report found yet. It will appear after training/evaluation.")
-if df_compare.empty:
-    st.info("No model comparison report found yet. It will appear after training/evaluation.")
+    if st.button("Generate baseline reports (run main.py)"):
+        try:
+            subprocess.run(
+                [sys.executable, str(PROJECT_ROOT / "main.py")],
+                cwd=str(PROJECT_ROOT),
+                check=True,
+            )
+            st.success("Reports generated. Rerunning...")
+            st.rerun()
+        except Exception as e:
+            st.error(f"Report generation failed: {e}")
+
+    st.stop()
+
 
 # =========================
 # HEADER + MODE
