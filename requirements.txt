@@ -9,3 +9,4 @@ wordcloud
 sentence-transformers
 streamlit
 openpyxl
+plotly
