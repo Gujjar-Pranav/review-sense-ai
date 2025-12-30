@@ -66,55 +66,42 @@ st.markdown(
 )
 
 # =========================
-# MODEL + REPORTS (Streamlit Cloud safe)
+# LOAD MODEL + REPORTS (Cloud-safe: NO training here)
 # =========================
 model = None
 
-# --- Model ---
+# --- Model (required) ---
 if MODEL_PATH.exists():
     model = joblib.load(MODEL_PATH)
 else:
-    st.warning(
-        "Model not found yet. You can train it from here (first run) or commit the artifacts/ folder to GitHub."
+    st.error(
+        "Model file not found in this deployment.\n\n"
+        f"Expected: {MODEL_PATH}\n\n"
+        "Fix:\n"
+        "1) Commit and push: artifacts/best_model_calibrated.joblib\n"
+        "2) Redeploy Streamlit Cloud\n"
+        "(Training inside Streamlit Cloud is disabled to avoid crashes.)"
     )
-    if st.button("Train model now (first run)"):
-        try:
-            subprocess.run(
-                [sys.executable, str(PROJECT_ROOT / "main.py")],
-                cwd=str(PROJECT_ROOT),
-                check=True
-            )
-            st.success("Training complete. Rerunning the app now...")
-            st.rerun()
-        except Exception as e:
-            st.error(f"Training failed: {e}")
     st.stop()
 
-# --- Reports (optional files) ---
+# --- Reports (optional, but recommended) ---
 misclass_path = REPORTS_PATH / "misclassified.csv"
-compare_path = REPORTS_PATH / "model_comparison.csv"
+compare_path  = REPORTS_PATH / "model_comparison.csv"
 
-df_errors = pd.read_csv(misclass_path) if misclass_path.exists() else pd.DataFrame()
-df_compare = pd.read_csv(compare_path) if compare_path.exists() else pd.DataFrame()
-if df_errors.empty or df_compare.empty:
-    st.warning(
-        "Baseline reports not found yet (misclassified.csv / model_comparison.csv). "
-        "Generate them now?"
+df_errors  = pd.read_csv(misclass_path) if misclass_path.exists() else pd.DataFrame()
+df_compare = pd.read_csv(compare_path)  if compare_path.exists()  else pd.DataFrame()
+
+if df_errors.empty:
+    st.info(
+        "Baseline report missing: outputs/reports/misclassified.csv\n"
+        "Fix: Run locally: `python main.py` then commit/push outputs/reports/."
     )
 
-    if st.button("Generate baseline reports (run main.py)"):
-        try:
-            subprocess.run(
-                [sys.executable, str(PROJECT_ROOT / "main.py")],
-                cwd=str(PROJECT_ROOT),
-                check=True,
-            )
-            st.success("Reports generated. Rerunning...")
-            st.rerun()
-        except Exception as e:
-            st.error(f"Report generation failed: {e}")
-
-    st.stop()
+if df_compare.empty:
+    st.info(
+        "Baseline report missing: outputs/reports/model_comparison.csv\n"
+        "Fix: Run locally: `python main.py` then commit/push outputs/reports/."
+    )
 
 
 # =========================
