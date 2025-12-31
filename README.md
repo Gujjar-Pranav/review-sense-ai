@@ -78,6 +78,19 @@ Detects reviews that are hard for AI to judge, including:
 
 ---
 
+## Screenshots 
+
+<img width="300" height="300" alt="Screenshot 2025-12-31 at 17 50 15" src="https://github.com/user-attachments/assets/880eea6c-8125-45ac-981d-1b68d9d72dec" />
+<img width="300" height="300" alt="Screenshot 2025-12-31 at 17 50 40" src="https://github.com/user-attachments/assets/0b5b888b-bd0a-4947-86a9-ff7b2cdf156b" />
+<img width="300" height="300" alt="Screenshot 2025-12-31 at 17 50 48" src="https://github.com/user-attachments/assets/a9f2f4db-cff5-4466-81fa-3b9b1c136913" />
+<img width="300" height="300" alt="Screenshot 2025-12-31 at 17 50 57" src="https://github.com/user-attachments/assets/3bbea809-f90f-4b4e-a556-ec7c68848077" />
+<img width="300" height="300" alt="Screenshot 2025-12-31 at 17 51 08" src="https://github.com/user-attachments/assets/88ade415-072d-46d7-a371-ab256fd58927" />
+<img width="300" height="300" alt="Screenshot 2025-12-31 at 17 51 18" src="https://github.com/user-attachments/assets/9e031a87-f2a9-47e0-9539-293ee78137ac" />
+<img width="300" height="300" alt="Screenshot 2025-12-31 at 17 51 32" src="https://github.com/user-attachments/assets/ff72ddc0-b7fa-42df-a646-1e56c084df5d" />
+<img width="300" height="300" alt="Screenshot 2025-12-31 at 17 51 46" src="https://github.com/user-attachments/assets/b58c13ee-16b2-4383-a4ab-6324784cb0b4" />
+<img width="300" height="300" alt="Screenshot 2025-12-31 at 17 51 59" src="https://github.com/user-attachments/assets/cc661382-cacf-4e1f-8246-823895943601" />
+
+
 ## 📂 Project Structure
 
 ```text
@@ -189,3 +202,4 @@ Drift & confidence alerts
 
 Pranav Gujjar
 Machine Learning & Data Science
+
