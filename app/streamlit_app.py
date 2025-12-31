@@ -1,4 +1,4 @@
-# streamlit_app.py
+
 import streamlit as st
 import pandas as pd
 import numpy as np
@@ -8,22 +8,17 @@ from pathlib import Path
 import plotly.express as px
 from collections import Counter
 
-
-# =========================
-# PATHS (CLOUD SAFE)
-# =========================
+# PATHS
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 MODEL_PATH = PROJECT_ROOT / "artifacts" / "best_model_calibrated.joblib"
 REPORTS_PATH = PROJECT_ROOT / "outputs" / "reports"
 
-# =========================
+
 # PAGE CONFIG
-# =========================
 st.set_page_config(page_title="ReviewSense", page_icon="💬", layout="wide")
 
-# =========================
-# STYLE (lightweight + professional)
-# =========================
+
+# STYLE
 st.markdown(
     """
     <style>
@@ -81,12 +76,11 @@ st.markdown(
     unsafe_allow_html=True
 )
 
-# =========================
-# LOAD MODEL + REPORTS (Cloud-safe: NO training here)
-# =========================
+
+# LOAD MODEL + REPORTS
 model = None
 
-# --- Model (required) ---
+# Model (required)
 if MODEL_PATH.exists():
     model = joblib.load(MODEL_PATH)
 else:
@@ -100,7 +94,7 @@ else:
     )
     st.stop()
 
-# --- Reports (optional, but recommended) ---
+# Reports
 misclass_path = REPORTS_PATH / "misclassified.csv"
 compare_path  = REPORTS_PATH / "model_comparison.csv"
 
@@ -120,9 +114,8 @@ if df_compare.empty:
     )
 
 
-# =========================
+
 # HEADER + MODE
-# =========================
 st.title("💬 ReviewSense")
 st.caption("A customer-ready review intelligence dashboard")
 
@@ -132,9 +125,8 @@ st.session_state.mode = st.radio("🧠 Explanation Mode", ["Simple Language", "T
 def explain(simple, technical):
     return simple if st.session_state.get("mode", "Simple Language") == "Simple Language" else technical
 
-# =========================
+
 # 5-level buckets
-# =========================
 BUCKETS = [
     ("Strongly Negative 😡", 0.00, 0.25, "Customers are very unhappy"),
     ("Negative 🙁",          0.25, 0.45, "Some disappointment reported"),
@@ -156,9 +148,7 @@ def bucket_explainer(bucket: str) -> str:
             return desc
     return ""
 
-# =========================
 # Baseline report safety + derived cols
-# =========================
 if not df_errors.empty:
     # Ensure required columns exist if misclassified.csv exists
     REQUIRED_ERROR_COLS = {"proba_pos", "review_raw"}
@@ -188,9 +178,8 @@ if not df_errors.empty:
     # Buckets
     df_errors["bucket"] = df_errors["proba_pos"].apply(bucketize)
 
-# =========================
+
 # Global highlighting util
-# =========================
 def highlight_words(text, words, color):
     if not words:
         return text
@@ -203,9 +192,8 @@ def highlight_words(text, words, color):
         )
     return text
 
-# =========================
+
 # Model extraction (CalibratedClassifierCV-safe)
-# =========================
 def _get_fitted_pipeline_from_calibrated(calibrated_model):
     if hasattr(calibrated_model, "calibrated_classifiers_") and calibrated_model.calibrated_classifiers_:
         cc0 = calibrated_model.calibrated_classifiers_[0]
@@ -235,9 +223,9 @@ def get_top_words(calibrated_model, n=10):
 
 TOP_POS_WORDS, TOP_NEG_WORDS = get_top_words(model, n=12)
 
-# =========================
+
 # Review-level explainability (dual meaning)
-# =========================
+
 def _get_fitted_tfidf_and_svm(calibrated_model):
     pipe = _get_fitted_pipeline_from_calibrated(calibrated_model)
     if pipe is None:
@@ -316,15 +304,13 @@ def highlight_terms_both(text: str, pos_terms, neg_terms):
 
     return safe
 
-# =========================
+
 # Better explanations + noise filtering
-# =========================
 GENERIC_TERMS = {
     "thing", "things", "lot", "well", "really", "very", "much", "early", "right", "made",
     "get", "got", "one", "also", "still", "even", "just", "like", "would", "could", "dont",
     "don't", "im", "i'm", "ive", "i've", "movie", "book"
 }
-
 def filter_terms(terms):
     cleaned = []
     for t in terms:
@@ -445,9 +431,8 @@ def summarize_bucket_insights(subset_df, k=8):
         return "Most reviews in this category share similar wording and tone."
     return f"Most reviews here mention: {', '.join(top[:5])}" + (f" (and also {', '.join(top[5:])})." if len(top) > 5 else ".")
 
-# =========================
+
 # Helpers: upload anything + auto column guessing
-# =========================
 def load_any_table(uploaded_file) -> pd.DataFrame:
     name = uploaded_file.name.lower()
     if name.endswith(".csv"):
@@ -529,9 +514,8 @@ def safe_textcol_from_batch(df):
             return c
     return df.columns[0]
 
-# =========================
+
 # Charts (compact + interactive)
-# =========================
 def donut_bucket_distribution(df, bucket_col="bucket"):
     if df.empty or bucket_col not in df.columns:
         return px.pie(pd.DataFrame({"Bucket": [], "Count": []}), names="Bucket", values="Count", hole=0.68, height=300)
@@ -565,9 +549,7 @@ def kw_bar(kws, height=320, title=None):
     fig.update_layout(margin=dict(t=10, b=10, l=10, r=10), yaxis_title=None, xaxis_title=None, title=title)
     return fig
 
-# =========================
 # NAVIGATION STATE
-# =========================
 if "page" not in st.session_state:
     st.session_state.page = "Overview"
 if "selected_bucket" not in st.session_state:
@@ -586,9 +568,7 @@ pages = [
 st.sidebar.title("🧭 Navigation")
 st.session_state.page = st.sidebar.radio("Go to", pages, index=pages.index(st.session_state.page))
 
-# =========================
 # PAGE: OVERVIEW
-# =========================
 if st.session_state.page == "Overview":
     st.subheader("📊 Overview")
 
@@ -767,9 +747,8 @@ if st.session_state.page == "Overview":
         else:
             st.warning("Type a review OR upload a file to analyze.")
 
-# =========================
+
 # PAGE: CATEGORY DETAILS
-# =========================
 elif st.session_state.page == "Category Details":
     if df_errors.empty:
         st.info("Baseline reports not available. Use Overview → Quick Analyze upload to explore your dataset.")
@@ -852,9 +831,8 @@ elif st.session_state.page == "Category Details":
             "Keyword counts from cleaned text in this subset."
         ))
 
-# =========================
+
 # PAGE: BATCH RESULTS
-# =========================
 elif st.session_state.page == "Batch Results":
     st.subheader("📦 Batch Results (Uploaded File)")
 
@@ -1041,9 +1019,8 @@ elif st.session_state.page == "Batch Results":
         use_container_width=True
     )
 
-# =========================
+
 # PAGE: BUSINESS INSIGHTS
-# =========================
 elif st.session_state.page == "Business Insights":
     st.subheader("💡 Business Insights (Executive View)")
 
@@ -1164,9 +1141,8 @@ elif st.session_state.page == "Business Insights":
     if source_label == "Baseline Sample":
         st.info("Upload a CSV/TSV/XLSX in Overview to get Business Insights for your own dataset.")
 
-# =========================
+
 # PAGE: TRICKY REVIEWS
-# =========================
 elif st.session_state.page == "Tricky Reviews":
     st.subheader("🧪 Tricky Reviews (AI Limitations)")
     st.caption(explain(
@@ -1373,9 +1349,8 @@ elif st.session_state.page == "Tricky Reviews":
         "- Negation patterns can reverse polarity; review manually if near 0.5."
     ))
 
-# =========================
+
 # PAGE: TRUST & RELIABILITY
-# =========================
 elif st.session_state.page in ["Model Trust", "Trust & Reliability"]:
     st.subheader("🛡️ Trust Dashboard")
     st.caption("Executive view: how reliable the scores are and where risk is concentrated.")

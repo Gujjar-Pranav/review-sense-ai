@@ -1,7 +1,5 @@
 def explain(simple, technical, mode):
     return simple if mode == "Simple Language" else technical
-
-
 def sentiment_band(p):
     if p >= 0.85:
         return "Strong Positive 😊", "Very High"

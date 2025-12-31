@@ -2,7 +2,6 @@ import re
 import string
 import nltk
 from nltk.corpus import stopwords
-
 def get_stopwords():
     try:
         return set(stopwords.words("english"))
@@ -11,7 +10,6 @@ def get_stopwords():
         return set(stopwords.words("english"))
 
 STOP_WORDS = get_stopwords()
-
 def preprocess_text(text: str) -> str:
     text = str(text).lower()
     text = re.sub(r"\d+", "", text)
